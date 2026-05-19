@@ -1,0 +1,43 @@
+# Railway-compatible Cap Web Dockerfile.
+#
+# This is a thin adapter of apps/web/Dockerfile that removes the two
+# constructs Railway's Metal builder does not yet support:
+#   1. `# syntax=docker.io/docker/dockerfile:1` directive (BuildKit frontend)
+#   2. `RUN --mount=type=cache,...` (BuildKit cache mount)
+#
+# All build steps are otherwise identical to upstream apps/web/Dockerfile at
+# git tag cap-v0.4.84. No Cap source-tree files are modified.
+
+FROM node:24-alpine AS base
+RUN corepack enable
+
+FROM base AS builder
+WORKDIR /app
+COPY . .
+
+RUN corepack enable pnpm
+RUN pnpm i --frozen-lockfile
+
+ARG NEXT_PUBLIC_DOCKER_BUILD=true
+ENV NEXT_PUBLIC_WEB_URL=http://localhost:3000
+
+RUN pnpm run build:web
+
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+COPY --from=builder --chown=nextjs:nodejs /app/packages/database/migrations ./apps/web/migrations
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD HOSTNAME="0.0.0.0" node apps/web/server.js
