@@ -1,0 +1,27 @@
+# Railway-compatible Cap Media Server Dockerfile.
+#
+# Adapter of apps/media-server/Dockerfile.standalone that uses full paths from
+# repo root, avoiding the need to set Railway's rootDirectory (which Railway's
+# Metal builder doesn't honor cleanly for multi-step COPYs in monorepos).
+#
+# Source files at apps/media-server/* are unchanged. AGPL Operating Rule §0.1
+# holds — no Cap source modifications, only this build-environment glue.
+
+FROM oven/bun:1-alpine
+
+RUN apk add --no-cache ffmpeg
+
+WORKDIR /app
+
+COPY apps/media-server/package.json ./
+RUN bun install --production
+
+COPY apps/media-server/src ./src
+
+ENV PORT=3456
+EXPOSE 3456
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:${PORT}/health || exit 1
+
+CMD ["bun", "run", "src/index.ts"]
